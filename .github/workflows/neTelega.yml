@@ -22,6 +22,7 @@ jobs:
           mkdir -p app/src/main/assets
           mkdir -p app/src/main/java/me/ne/telega
           mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/xml
           mkdir -p app/src/main/res/values
 
           echo "📦 Создаю пустышку Telega с пакетом me.telega.android..."
@@ -30,7 +31,6 @@ jobs:
           mkdir -p fake_app/app/src/main/java/me/telega/android
           mkdir -p fake_app/app/src/main/res/layout
 
-          # Манифест пустышки
           cat > fake_app/app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -50,7 +50,6 @@ jobs:
           </manifest>
           EOF
 
-          # MainActivity пустышки
           cat > fake_app/app/src/main/java/me/telega/android/MainActivity.java <<EOF
           package me.telega.android;
           import android.os.Bundle;
@@ -64,7 +63,6 @@ jobs:
           }
           EOF
 
-          # layout пустышки
           cat > fake_app/app/src/main/res/layout/activity_main.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <TextView xmlns:android="http://schemas.android.com/apk/res/android"
@@ -75,7 +73,6 @@ jobs:
               android:textSize="24sp"/>
           EOF
 
-          # build.gradle для модуля app пустышки
           cat > fake_app/app/build.gradle <<EOF
           plugins {
               id 'com.android.application'
@@ -101,19 +98,16 @@ jobs:
           }
           EOF
 
-          # gradle.properties для пустышки
           cat > fake_app/gradle.properties <<EOF
           android.useAndroidX=true
           android.enableJetifier=true
           EOF
 
-          # settings.gradle для пустышки
           cat > fake_app/settings.gradle <<EOF
           rootProject.name = 'FakeTelega'
           include ':app'
           EOF
 
-          # Корневой build.gradle для пустышки
           cat > fake_app/build.gradle <<EOF
           buildscript {
               repositories { google(); mavenCentral() }
@@ -124,7 +118,6 @@ jobs:
           }
           EOF
 
-          # Gradle wrapper для пустышки
           mkdir -p fake_app/gradle/wrapper
           curl -s -o fake_app/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/master/gradle/wrapper/gradle-wrapper.jar
           cat > fake_app/gradle/wrapper/gradle-wrapper.properties <<EOF
@@ -138,19 +131,17 @@ jobs:
           curl -s -o fake_app/gradlew https://raw.githubusercontent.com/gradle/gradle/master/gradlew
           chmod +x fake_app/gradlew
 
-          # Собираем пустышку
           cd fake_app
           ./gradlew assembleRelease --no-daemon
           cd ..
 
-          # Копируем пустышку в assets основного приложения
           cp fake_app/app/build/outputs/apk/release/*.apk app/src/main/assets/fake_telega.apk
           echo "✅ Пустышка me.telega.android создана"
 
-          # ==== СОБИРАЕМ NeTelega (me.ne.telega) ====
-          echo "🔨 Создаю NeTelega с пакетом me.ne.telega..."
+          # ==== СОБИРАЕМ NeTelega (me.ne.telega) с FileProvider ====
+          echo "🔨 Создаю NeTelega с пакетом me.ne.telega и FileProvider..."
 
-          # Манифест NeTelega
+          # AndroidManifest.xml с FileProvider
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -167,11 +158,28 @@ jobs:
                           <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
                   </activity>
+                  <provider
+                      android:name="androidx.core.content.FileProvider"
+                      android:authorities="\${applicationId}.fileprovider"
+                      android:exported="false"
+                      android:grantUriPermissions="true">
+                      <meta-data
+                          android:name="android.support.FILE_PROVIDER_PATHS"
+                          android:resource="@xml/file_paths" />
+                  </provider>
               </application>
           </manifest>
           EOF
 
-          # MainActivity NeTelega
+          # file_paths.xml
+          cat > app/src/main/res/xml/file_paths.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <paths>
+              <cache-path name="cache" path="/" />
+          </paths>
+          EOF
+
+          # MainActivity.java с FileProvider
           cat > app/src/main/java/me/ne/telega/MainActivity.java <<'EOF'
           package me.ne.telega;
 
@@ -186,6 +194,7 @@ jobs:
           import android.net.Uri;
           import android.os.Build;
           import android.provider.Settings;
+          import androidx.core.content.FileProvider;
           import java.io.File;
           import java.io.FileOutputStream;
           import java.io.InputStream;
@@ -251,8 +260,11 @@ jobs:
                       in.close();
                       out.close();
 
+                      Uri apkUri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", tempFile);
+
                       Intent intent = new Intent(Intent.ACTION_VIEW);
-                      intent.setDataAndType(Uri.fromFile(tempFile), "application/vnd.android.package-archive");
+                      intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
+                      intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                       intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                       startActivity(intent);
                       Toast.makeText(this, "🔄 Установка блокировщика...", Toast.LENGTH_SHORT).show();
@@ -282,7 +294,7 @@ jobs:
           }
           EOF
 
-          # layout NeTelega
+          # layout
           cat > app/src/main/res/layout/activity_main.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -323,7 +335,7 @@ jobs:
           </LinearLayout>
           EOF
 
-          # build.gradle для NeTelega
+          # build.gradle
           cat > app/build.gradle <<EOF
           plugins {
               id 'com.android.application'
@@ -359,13 +371,11 @@ jobs:
           }
           EOF
 
-          # gradle.properties для NeTelega
           cat > gradle.properties <<EOF
           android.useAndroidX=true
           android.enableJetifier=true
           EOF
 
-          # Корневые gradle файлы для NeTelega
           cat > settings.gradle <<EOF
           rootProject.name = 'NeTelega'
           include ':app'
@@ -381,7 +391,6 @@ jobs:
           }
           EOF
 
-          # Gradle wrapper для NeTelega
           mkdir -p gradle/wrapper
           curl -s -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/master/gradle/wrapper/gradle-wrapper.jar
           cat > gradle/wrapper/gradle-wrapper.properties <<EOF
@@ -401,13 +410,10 @@ jobs:
           # ==== ПОДПИСЫВАЕМ APK ====
           echo "🔑 Генерирую ключ и подписываю APK..."
 
-          # Создаём keystore
           keytool -genkey -v -keystore keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias release -dname "CN=NeTelega, OU=Dev, O=NeTelega, L=City, ST=State, C=RU" -storepass 123456 -keypass 123456
 
-          # Находим apksigner
           APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | head -1)
 
-          # Подписываем APK
           $APKSIGNER sign --ks keystore.jks --ks-pass pass:123456 --out app-release-signed.apk app/build/outputs/apk/release/*.apk
 
           echo "✅ APK подписан: app-release-signed.apk"

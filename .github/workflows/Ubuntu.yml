@@ -1,19 +1,18 @@
 name: Ubuntu 24.04 SSH via Docker
 
 on:
-  workflow_dispatch:  # Запуск вручную
+  workflow_dispatch:
 
 jobs:
   ubuntu-ssh:
     runs-on: ubuntu-22.04
     steps:
-      # Шаг 1: Install Docker
+      # Шаг 1: Install Docker (официальный способ)
       - name: Install Docker
         run: |
-          sudo apt-get update
-          sudo apt-get install -y docker.io
-          sudo systemctl start docker
-          sudo systemctl enable docker
+          curl -fsSL https://get.docker.com -o get-docker.sh
+          sudo sh get-docker.sh
+          sudo usermod -aG docker $USER
           docker --version
 
       # Шаг 2: Pull Ubuntu 24.04
@@ -24,30 +23,19 @@ jobs:
       # Шаг 3: Login on ubuntu and install SSH
       - name: Login on ubuntu and install SSH
         run: |
-          # Запускаем контейнер с Ubuntu 24.04
           docker run -d --name ubuntu-ssh -p 2222:22 ubuntu:24.04 sleep infinity
-          
-          # Устанавливаем SSH-сервер и sudo
           docker exec ubuntu-ssh apt-get update
           docker exec ubuntu-ssh apt-get install -y openssh-server sudo
-          
-          # Создаём пользователя 'user' с паролем 'ubuntu'
           docker exec ubuntu-ssh useradd -m -s /bin/bash user
           echo "user:ubuntu" | docker exec -i ubuntu-ssh chpasswd
           docker exec ubuntu-ssh usermod -aG sudo user
-          
-          # Запускаем SSH-сервис
           docker exec ubuntu-ssh service ssh start
-          
           echo "✅ SSH сервер запущен в контейнере Ubuntu 24.04"
 
       # Шаг 4: Generate Artifact with SSH credentials
       - name: Generate Artifact with SSH credentials
         run: |
-          # Получаем IP адрес runner-а
           RUNNER_IP=$(curl -s ifconfig.me)
-          
-          # Создаём файл с данными для подключения
           cat > ssh-credentials.txt <<EOF
           ==========================================
           🐧 ДАННЫЕ ДЛЯ ПОДКЛЮЧЕНИЯ К UBUNTU 24.04
@@ -65,7 +53,6 @@ jobs:
           Контейнер будет остановлен после завершения работы.
           ==========================================
           EOF
-          
           echo "✅ Файл ssh-credentials.txt создан"
 
       # Загружаем файл как артефакт
@@ -74,7 +61,7 @@ jobs:
         with:
           name: ssh-credentials
           path: ssh-credentials.txt
-          retention-days: 1  # Хранить артефакт 1 день
+          retention-days: 1
 
       # Держим контейнер запущенным для подключения
       - name: Keep container running
@@ -84,4 +71,4 @@ jobs:
           echo "📥 Скачайте артефакт ssh-credentials для данных"
           echo "⏳ Workflow будет активен 30 минут"
           echo "=========================================="
-          sleep 1800  # 30 минут на подключение
+          sleep 1800

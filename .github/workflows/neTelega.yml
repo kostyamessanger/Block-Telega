@@ -18,16 +18,15 @@ jobs:
 
       - name: Build APK
         run: |
-          # Создаём папки основного приложения
+          # Создаём папки
           mkdir -p app/src/main/assets
           mkdir -p app/src/main/java/me/ne/telega
           mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/xml
-          mkdir -p app/src/main/res/values
 
-          echo "📦 Создаю пустышку Telega с пакетом me.telega.android..."
+          echo "📦 Создаю пустышку Telega..."
 
-          # ==== СОБИРАЕМ ПУСТЫШКУ (me.telega.android) ====
+          # ==== ПУСТЫШКА ====
           mkdir -p fake_app/app/src/main/java/me/telega/android
           mkdir -p fake_app/app/src/main/res/layout
 
@@ -135,13 +134,19 @@ jobs:
           ./gradlew assembleRelease --no-daemon
           cd ..
 
-          cp fake_app/app/build/outputs/apk/release/*.apk app/src/main/assets/fake_telega.apk
-          echo "✅ Пустышка me.telega.android создана"
+          # ПОДПИСЫВАЕМ ПУСТЫШКУ
+          echo "🔑 Подписываю пустышку..."
+          keytool -genkey -v -keystore fake_keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias fake -dname "CN=Fake, OU=Dev, O=Fake, L=City, ST=State, C=RU" -storepass 123456 -keypass 123456
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | head -1)
+          $APKSIGNER sign --ks fake_keystore.jks --ks-pass pass:123456 --out fake_app/app/build/outputs/apk/release/fake_telega_signed.apk fake_app/app/build/outputs/apk/release/*.apk
 
-          # ==== СОБИРАЕМ NeTelega (me.ne.telega) с FileProvider ====
-          echo "🔨 Создаю NeTelega с пакетом me.ne.telega и FileProvider..."
+          # Копируем подписанную пустышку в assets
+          cp fake_app/app/build/outputs/apk/release/fake_telega_signed.apk app/src/main/assets/fake_telega.apk
+          echo "✅ Пустышка me.telega.android создана и подписана"
 
-          # AndroidManifest.xml с FileProvider
+          # ==== ОСНОВНОЕ ПРИЛОЖЕНИЕ NeTelega ====
+          echo "🔨 Создаю NeTelega..."
+
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -171,7 +176,6 @@ jobs:
           </manifest>
           EOF
 
-          # file_paths.xml
           cat > app/src/main/res/xml/file_paths.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <paths>
@@ -179,7 +183,6 @@ jobs:
           </paths>
           EOF
 
-          # MainActivity.java с FileProvider
           cat > app/src/main/java/me/ne/telega/MainActivity.java <<'EOF'
           package me.ne.telega;
 
@@ -294,7 +297,6 @@ jobs:
           }
           EOF
 
-          # layout
           cat > app/src/main/res/layout/activity_main.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -335,7 +337,6 @@ jobs:
           </LinearLayout>
           EOF
 
-          # build.gradle
           cat > app/build.gradle <<EOF
           plugins {
               id 'com.android.application'
@@ -407,16 +408,13 @@ jobs:
           echo "🔨 Собираю NeTelega..."
           ./gradlew assembleRelease --no-daemon
 
-          # ==== ПОДПИСЫВАЕМ APK ====
-          echo "🔑 Генерирую ключ и подписываю APK..."
-
+          # ПОДПИСЫВАЕМ ОСНОВНОЕ ПРИЛОЖЕНИЕ
+          echo "🔑 Подписываю NeTelega..."
           keytool -genkey -v -keystore keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias release -dname "CN=NeTelega, OU=Dev, O=NeTelega, L=City, ST=State, C=RU" -storepass 123456 -keypass 123456
-
           APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | head -1)
-
           $APKSIGNER sign --ks keystore.jks --ks-pass pass:123456 --out app-release-signed.apk app/build/outputs/apk/release/*.apk
 
-          echo "✅ APK подписан: app-release-signed.apk"
+          echo "✅ NeTelega подписан: app-release-signed.apk"
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4

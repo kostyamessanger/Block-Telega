@@ -1,4 +1,4 @@
-  name: 🛡️ NeTelega Builder
+name: 🛡️ NeTelega Builder
 
 on:
   workflow_dispatch:

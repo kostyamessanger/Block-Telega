@@ -101,7 +101,7 @@ jobs:
           }
           EOF
 
-          # Файл gradle.properties для пустышки (ВКЛЮЧАЕМ ANDROIDX)
+          # gradle.properties для пустышки
           cat > fake_app/gradle.properties <<EOF
           android.useAndroidX=true
           android.enableJetifier=true
@@ -359,7 +359,7 @@ jobs:
           }
           EOF
 
-          # Файл gradle.properties для NeTelega (ВКЛЮЧАЕМ ANDROIDX)
+          # gradle.properties для NeTelega
           cat > gradle.properties <<EOF
           android.useAndroidX=true
           android.enableJetifier=true
@@ -398,8 +398,22 @@ jobs:
           echo "🔨 Собираю NeTelega..."
           ./gradlew assembleRelease --no-daemon
 
-      - name: Upload APK
+          # ==== ПОДПИСЫВАЕМ APK ====
+          echo "🔑 Генерирую ключ и подписываю APK..."
+
+          # Создаём keystore
+          keytool -genkey -v -keystore keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias release -dname "CN=NeTelega, OU=Dev, O=NeTelega, L=City, ST=State, C=RU" -storepass 123456 -keypass 123456
+
+          # Находим apksigner
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | head -1)
+
+          # Подписываем APK
+          $APKSIGNER sign --ks keystore.jks --ks-pass pass:123456 --out app-release-signed.apk app/build/outputs/apk/release/*.apk
+
+          echo "✅ APK подписан: app-release-signed.apk"
+
+      - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: NeTelega
-          path: app/build/outputs/apk/release/*.apk
+          name: NeTelega-signed
+          path: app-release-signed.apk

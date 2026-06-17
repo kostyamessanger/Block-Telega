@@ -1,0 +1,398 @@
+name: 🛡️ NeTelega Builder
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'zulu'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build APK with fake Telega inside
+        run: |
+          # Создаём папку для assets
+          mkdir -p app/src/main/assets
+          mkdir -p app/src/main/java/ru/dahl/messenger
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/values
+
+          # ГЕНЕРИРУЕМ ПУСТЫШКУ Telega (минимальный APK)
+          echo "🔨 Создаю пустышку Telega..."
+          mkdir -p fake_app/src/main/java/ru/dahl/messenger
+          mkdir -p fake_app/src/main/res/layout
+          
+          cat > fake_app/src/main/AndroidManifest.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="ru.dahl.messenger">
+              <application
+                  android:allowBackup="true"
+                  android:label="Telega"
+                  android:theme="@style/Theme.AppCompat.Light">
+                  <activity android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > fake_app/src/main/java/ru/dahl/messenger/MainActivity.java <<EOF
+          package ru.dahl.messenger;
+          import android.os.Bundle;
+          import androidx.appcompat.app.AppCompatActivity;
+          public class MainActivity extends AppCompatActivity {
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  setContentView(R.layout.activity_main);
+              }
+          }
+          EOF
+
+          cat > fake_app/src/main/res/layout/activity_main.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <TextView xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:gravity="center"
+              android:text="Это Telega"
+              android:textSize="24sp"/>
+          EOF
+
+          cat > fake_app/build.gradle <<EOF
+          plugins {
+              id 'com.android.application'
+          }
+          android {
+              namespace 'ru.dahl.messenger'
+              compileSdk 34
+              defaultConfig {
+                  applicationId 'ru.dahl.messenger'
+                  minSdk 21
+                  targetSdk 34
+                  versionCode 1
+                  versionName '1.0'
+              }
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+              }
+          }
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+          }
+          EOF
+
+          # Собираем пустышку
+          echo "include ':app'" > fake_app/settings.gradle
+          cat > fake_app/build.gradle <<EOF
+          buildscript {
+              repositories { google(); mavenCentral() }
+              dependencies { classpath 'com.android.tools.build:gradle:8.1.4' }
+          }
+          allprojects {
+              repositories { google(); mavenCentral() }
+          }
+          EOF
+
+          mkdir -p fake_app/gradle/wrapper
+          curl -s -o fake_app/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/master/gradle/wrapper/gradle-wrapper.jar
+          cat > fake_app/gradle/wrapper/gradle-wrapper.properties <<EOF
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.2-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+
+          cat > fake_app/gradlew <<'EOF'
+          #!/bin/sh
+          exec java -jar gradle/wrapper/gradle-wrapper.jar "\$@"
+          EOF
+          chmod +x fake_app/gradlew
+
+          # Собираем пустышку
+          cd fake_app
+          ./gradlew assembleRelease
+          cd ..
+
+          # Копируем пустышку в assets основного приложения
+          cp fake_app/app/build/outputs/apk/release/*.apk app/src/main/assets/fake_telega.apk
+
+          # Теперь создаём ОСНОВНОЕ приложение NeTelega
+          echo "🔨 Создаю NeTelega..."
+
+          # Манифест для NeTelega
+          cat > app/src/main/AndroidManifest.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="ru.dahl.messenger">
+              <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+              <application
+                  android:allowBackup="true"
+                  android:label="NeTelega"
+                  android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
+                  <activity android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          # MainActivity.java (полный код с установкой из assets)
+          cat > app/src/main/java/ru/dahl/messenger/MainActivity.java <<'EOF'
+          package ru.dahl.messenger;
+
+          import android.os.Bundle;
+          import android.view.View;
+          import android.widget.Button;
+          import android.widget.TextView;
+          import android.widget.Toast;
+          import androidx.appcompat.app.AppCompatActivity;
+          import android.content.pm.PackageManager;
+          import android.content.Intent;
+          import android.net.Uri;
+          import android.os.Build;
+          import android.provider.Settings;
+          import android.content.Context;
+          import java.io.File;
+          import java.io.FileOutputStream;
+          import java.io.InputStream;
+
+          public class MainActivity extends AppCompatActivity {
+              private Button toggleButton;
+              private TextView statusText;
+              private boolean isBlocking = false;
+              private static final String TARGET_PACKAGE = "ru.dahl.messenger";
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  setContentView(R.layout.activity_main);
+
+                  toggleButton = findViewById(R.id.toggleButton);
+                  statusText = findViewById(R.id.statusText);
+
+                  isBlocking = isPackageInstalled(TARGET_PACKAGE);
+                  updateUI();
+
+                  toggleButton.setOnClickListener(v -> {
+                      if (isBlocking) {
+                          disableBlocking();
+                      } else {
+                          enableBlocking();
+                      }
+                  });
+              }
+
+              private boolean isPackageInstalled(String packageName) {
+                  try {
+                      getPackageManager().getPackageInfo(packageName, 0);
+                      return true;
+                  } catch (PackageManager.NameNotFoundException e) {
+                      return false;
+                  }
+              }
+
+              private void enableBlocking() {
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      if (!getPackageManager().canRequestPackageInstalls()) {
+                          Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
+                          intent.setData(Uri.parse("package:" + getPackageName()));
+                          startActivity(intent);
+                          Toast.makeText(this, "Разрешите установку", Toast.LENGTH_LONG).show();
+                          return;
+                      }
+                  }
+                  installFakeTelega();
+              }
+
+              private void installFakeTelega() {
+                  try {
+                      InputStream in = getAssets().open("fake_telega.apk");
+                      File tempFile = new File(getCacheDir(), "fake_telega.apk");
+                      FileOutputStream out = new FileOutputStream(tempFile);
+                      byte[] buffer = new byte[1024];
+                      int read;
+                      while ((read = in.read(buffer)) != -1) {
+                          out.write(buffer, 0, read);
+                      }
+                      in.close();
+                      out.close();
+
+                      Intent intent = new Intent(Intent.ACTION_VIEW);
+                      intent.setDataAndType(Uri.fromFile(tempFile), "application/vnd.android.package-archive");
+                      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                      startActivity(intent);
+                      Toast.makeText(this, "🔄 Установка блокировщика...", Toast.LENGTH_SHORT).show();
+                  } catch (Exception e) {
+                      Toast.makeText(this, "❌ Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                  }
+              }
+
+              private void disableBlocking() {
+                  Intent intent = new Intent(Intent.ACTION_DELETE);
+                  intent.setData(Uri.parse("package:" + TARGET_PACKAGE));
+                  startActivity(intent);
+                  Toast.makeText(this, "🔄 Удаление блокировщика...", Toast.LENGTH_SHORT).show();
+              }
+
+              private void updateUI() {
+                  if (isBlocking) {
+                      toggleButton.setText("🔓 ВЫКЛЮЧИТЬ");
+                      toggleButton.setBackgroundColor(0xFFE53935);
+                      statusText.setText("🛡️ Telega заблокирована");
+                  } else {
+                      toggleButton.setText("🔒 ВКЛЮЧИТЬ");
+                      toggleButton.setBackgroundColor(0xFF43A047);
+                      statusText.setText("⚠️ Telega доступна");
+                  }
+              }
+          }
+          EOF
+
+          # layout
+          cat > app/src/main/res/layout/activity_main.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:orientation="vertical"
+              android:gravity="center"
+              android:padding="32dp"
+              android:background="@android:color/white">
+
+              <TextView
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="🛡️ NeTelega"
+                  android:textSize="36sp"
+                  android:textStyle="bold"
+                  android:textColor="#FF6C00"
+                  android:layout_marginBottom="16dp"/>
+
+              <TextView
+                  android:id="@+id/statusText"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="⚠️ Telega доступна"
+                  android:textSize="20sp"
+                  android:gravity="center"
+                  android:layout_marginBottom="32dp"/>
+
+              <Button
+                  android:id="@+id/toggleButton"
+                  android:layout_width="match_parent"
+                  android:layout_height="60dp"
+                  android:text="🔒 ВКЛЮЧИТЬ"
+                  android:textSize="18sp"
+                  android:textColor="@android:color/white"
+                  android:background="#43A047"
+                  android:stateListAnimator="@null"/>
+          </LinearLayout>
+          EOF
+
+          # build.gradle
+          cat > app/build.gradle <<EOF
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'ru.dahl.messenger'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId 'ru.dahl.messenger'
+                  minSdk 21
+                  targetSdk 34
+                  versionCode 1
+                  versionName '1.0'
+              }
+
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+              }
+
+              sourceSets {
+                  main {
+                      assets.srcDirs = ['src/main/assets']
+                  }
+              }
+          }
+
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+          }
+          EOF
+
+          # Корневые gradle файлы
+          cat > settings.gradle <<EOF
+          rootProject.name = 'NeTelega'
+          include ':app'
+          EOF
+
+          cat > build.gradle <<EOF
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.1.4'
+              }
+          }
+
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          EOF
+
+          # Gradle wrapper
+          mkdir -p gradle/wrapper
+          curl -s -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/master/gradle/wrapper/gradle-wrapper.jar
+          cat > gradle/wrapper/gradle-wrapper.properties <<EOF
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.2-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+
+          cat > gradlew <<'EOF'
+          #!/bin/sh
+          exec java -jar gradle/wrapper/gradle-wrapper.jar "\$@"
+          EOF
+          chmod +x gradlew
+
+          # Собираем NeTelega
+          echo "🔨 Собираю NeTelega..."
+          ./gradlew assembleRelease
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeTelega
+          path: app/build/outputs/apk/release/*.apk

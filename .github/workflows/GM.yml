@@ -12,7 +12,7 @@ on:
         required: true
         default: 'А ты не знаешь, что делать'
       template:
-        description: 'Шаблон (drake, disaster, or crying)'
+        description: 'Шаблон (drake, disaster, crying, or success)'
         required: true
         default: 'drake'
       font_size:
@@ -34,7 +34,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install Pillow
+          pip install Pillow requests
 
       - name: Generate meme
         env:
@@ -45,19 +45,21 @@ jobs:
         run: |
           python -c "
           from PIL import Image, ImageDraw, ImageFont
-          import os, textwrap
+          import os, textwrap, requests
+          from io import BytesIO
 
-          # Выбираем шаблон
+          # Шаблоны
           templates = {
               'drake': 'https://i.imgflip.com/1bij.jpg',
               'disaster': 'https://i.imgflip.com/2fm6x.jpg',
-              'crying': 'https://i.imgflip.com/2xsc9.jpg'
+              'crying': 'https://i.imgflip.com/2xsc9.jpg',
+              'success': 'https://i.imgflip.com/2zh47.jpg'
           }
           url = templates.get(os.environ['TEMPLATE'], templates['drake'])
 
           # Скачиваем шаблон
-          import requests
-          img = Image.open(requests.get(url, stream=True).raw).convert('RGB')
+          response = requests.get(url)
+          img = Image.open(BytesIO(response.content)).convert('RGB')
 
           # Настройки текста
           font_size = int(os.environ.get('FONT_SIZE', 40))
@@ -69,7 +71,7 @@ jobs:
           draw = ImageDraw.Draw(img)
           W, H = img.size
 
-          # Рисуем верхний текст
+          # Верхний текст
           top_text = os.environ.get('TOP', '')
           if top_text:
               wrapper = textwrap.TextWrapper(width=20)
@@ -81,7 +83,7 @@ jobs:
                   draw.text(((W - tw) / 2, y_offset), line, font=font, fill='white', stroke_width=2, stroke_fill='black')
                   y_offset += th + 5
 
-          # Рисуем нижний текст
+          # Нижний текст
           bottom_text = os.environ.get('BOTTOM', '')
           if bottom_text:
               wrapper = textwrap.TextWrapper(width=20)

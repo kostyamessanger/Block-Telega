@@ -1,0 +1,61 @@
+name: 🤖 Node - Бесконечный чат
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: '💬 Твой вопрос к Node'
+        required: true
+        default: 'Привет! Как дела?'
+      session_id:
+        description: 'ID сессии (не трогай)'
+        required: false
+        default: ''
+
+jobs:
+  chat:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Setup Ollama
+        uses: ai-action/setup-ollama@v2
+
+      - name: Pull Gemma 2 (27B)
+        run: |
+          ollama pull gemma2:27b
+
+      - name: Chat with Node
+        id: chat
+        env:
+          USER_PROMPT: ${{ github.event.inputs.prompt }}
+        run: |
+          SYSTEM_PROMPT="Меня зовут: Node, я энергичный парень, всегда помогаю, говорю с огоньком: 😎🔥"
+          RESPONSE=$(ollama run gemma2:27b --system "$SYSTEM_PROMPT" "$USER_PROMPT")
+          echo "response=$RESPONSE" >> $GITHUB_OUTPUT
+          echo "----------------------------------------"
+          echo "💬 Node: $RESPONSE"
+          echo "----------------------------------------"
+
+      - name: Save response
+        run: |
+          echo "${{ steps.chat.outputs.response }}" >> chat_history.txt
+          echo "----------------------------------------" >> chat_history.txt
+
+      - name: Upload chat history
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-history
+          path: chat_history.txt
+
+      - name: Ask for next question
+        id: ask
+        run: |
+          echo "🔄 Хочешь спросить ещё что-то? Напиши в новом запуске workflow."
+
+      - name: Re-run workflow
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run "${{ github.workflow }}" --ref "${{ github.ref_name }}" \
+            -f prompt="Что ещё хочешь спросить? (напиши в следующем запуске)" \
+            -f session_id="${{ github.run_id }}"

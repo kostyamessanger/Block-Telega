@@ -18,7 +18,7 @@ jobs:
 
       - name: Build APK
         run: |
-          # Создаём папки
+          # Создаём папки основного приложения
           mkdir -p app/src/main/assets
           mkdir -p app/src/main/java/me/ne/telega
           mkdir -p app/src/main/res/layout
@@ -27,10 +27,11 @@ jobs:
           echo "📦 Создаю пустышку Telega с пакетом me.telega.android..."
 
           # ==== СОБИРАЕМ ПУСТЫШКУ (me.telega.android) ====
-          mkdir -p fake_app/src/main/java/me/telega/android
-          mkdir -p fake_app/src/main/res/layout
+          mkdir -p fake_app/app/src/main/java/me/telega/android
+          mkdir -p fake_app/app/src/main/res/layout
 
-          cat > fake_app/src/main/AndroidManifest.xml <<EOF
+          # Манифест пустышки
+          cat > fake_app/app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
               package="me.telega.android">
@@ -49,7 +50,8 @@ jobs:
           </manifest>
           EOF
 
-          cat > fake_app/src/main/java/me/telega/android/MainActivity.java <<EOF
+          # MainActivity пустышки
+          cat > fake_app/app/src/main/java/me/telega/android/MainActivity.java <<EOF
           package me.telega.android;
           import android.os.Bundle;
           import androidx.appcompat.app.AppCompatActivity;
@@ -62,7 +64,8 @@ jobs:
           }
           EOF
 
-          cat > fake_app/src/main/res/layout/activity_main.xml <<EOF
+          # layout пустышки
+          cat > fake_app/app/src/main/res/layout/activity_main.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <TextView xmlns:android="http://schemas.android.com/apk/res/android"
               android:layout_width="match_parent"
@@ -72,7 +75,8 @@ jobs:
               android:textSize="24sp"/>
           EOF
 
-          cat > fake_app/build.gradle <<EOF
+          # build.gradle для модуля app пустышки
+          cat > fake_app/app/build.gradle <<EOF
           plugins {
               id 'com.android.application'
           }
@@ -97,11 +101,13 @@ jobs:
           }
           EOF
 
+          # settings.gradle для пустышки
           cat > fake_app/settings.gradle <<EOF
           rootProject.name = 'FakeTelega'
           include ':app'
           EOF
 
+          # Корневой build.gradle для пустышки
           cat > fake_app/build.gradle <<EOF
           buildscript {
               repositories { google(); mavenCentral() }
@@ -112,6 +118,7 @@ jobs:
           }
           EOF
 
+          # Gradle wrapper для пустышки
           mkdir -p fake_app/gradle/wrapper
           curl -s -o fake_app/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/master/gradle/wrapper/gradle-wrapper.jar
           cat > fake_app/gradle/wrapper/gradle-wrapper.properties <<EOF
@@ -125,16 +132,19 @@ jobs:
           curl -s -o fake_app/gradlew https://raw.githubusercontent.com/gradle/gradle/master/gradlew
           chmod +x fake_app/gradlew
 
+          # Собираем пустышку
           cd fake_app
           ./gradlew assembleRelease --no-daemon
           cd ..
 
+          # Копируем пустышку в assets основного приложения
           cp fake_app/app/build/outputs/apk/release/*.apk app/src/main/assets/fake_telega.apk
-          echo "✅ Пустышка me.telega.android создана"
+          echo "✅ Пустышка me.telega.android создана и скопирована"
 
           # ==== СОБИРАЕМ NeTelega (me.ne.telega) ====
           echo "🔨 Создаю NeTelega с пакетом me.ne.telega..."
 
+          # Манифест NeTelega
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -155,6 +165,7 @@ jobs:
           </manifest>
           EOF
 
+          # MainActivity NeTelega
           cat > app/src/main/java/me/ne/telega/MainActivity.java <<'EOF'
           package me.ne.telega;
 
@@ -265,6 +276,7 @@ jobs:
           }
           EOF
 
+          # layout NeTelega
           cat > app/src/main/res/layout/activity_main.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -305,6 +317,7 @@ jobs:
           </LinearLayout>
           EOF
 
+          # build.gradle для NeTelega
           cat > app/build.gradle <<EOF
           plugins {
               id 'com.android.application'
@@ -340,6 +353,7 @@ jobs:
           }
           EOF
 
+          # Корневые gradle файлы для NeTelega
           cat > settings.gradle <<EOF
           rootProject.name = 'NeTelega'
           include ':app'
@@ -355,6 +369,7 @@ jobs:
           }
           EOF
 
+          # Gradle wrapper для NeTelega
           mkdir -p gradle/wrapper
           curl -s -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/master/gradle/wrapper/gradle-wrapper.jar
           cat > gradle/wrapper/gradle-wrapper.properties <<EOF

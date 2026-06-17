@@ -1,0 +1,105 @@
+name: Генератор мемов 🖼️
+
+on:
+  workflow_dispatch:
+    inputs:
+      top_text:
+        description: 'Верхний текст'
+        required: true
+        default: 'Когда видишь ошибку в консоли'
+      bottom_text:
+        description: 'Нижний текст'
+        required: true
+        default: 'А ты не знаешь, что делать'
+      template:
+        description: 'Шаблон (drake, disaster, or crying)'
+        required: true
+        default: 'drake'
+      font_size:
+        description: 'Размер шрифта'
+        required: true
+        default: '40'
+
+jobs:
+  generate-meme:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install Pillow
+
+      - name: Generate meme
+        env:
+          TOP: ${{ github.event.inputs.top_text }}
+          BOTTOM: ${{ github.event.inputs.bottom_text }}
+          TEMPLATE: ${{ github.event.inputs.template }}
+          FONT_SIZE: ${{ github.event.inputs.font_size }}
+        run: |
+          python -c "
+          from PIL import Image, ImageDraw, ImageFont
+          import os, textwrap
+
+          # Выбираем шаблон
+          templates = {
+              'drake': 'https://i.imgflip.com/1bij.jpg',
+              'disaster': 'https://i.imgflip.com/2fm6x.jpg',
+              'crying': 'https://i.imgflip.com/2xsc9.jpg'
+          }
+          url = templates.get(os.environ['TEMPLATE'], templates['drake'])
+
+          # Скачиваем шаблон
+          import requests
+          img = Image.open(requests.get(url, stream=True).raw).convert('RGB')
+
+          # Настройки текста
+          font_size = int(os.environ.get('FONT_SIZE', 40))
+          try:
+              font = ImageFont.truetype('/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf', font_size)
+          except:
+              font = ImageFont.load_default()
+
+          draw = ImageDraw.Draw(img)
+          W, H = img.size
+
+          # Рисуем верхний текст
+          top_text = os.environ.get('TOP', '')
+          if top_text:
+              wrapper = textwrap.TextWrapper(width=20)
+              lines = wrapper.wrap(top_text.upper())
+              y_offset = 20
+              for line in lines:
+                  bbox = draw.textbbox((0, 0), line, font=font)
+                  tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+                  draw.text(((W - tw) / 2, y_offset), line, font=font, fill='white', stroke_width=2, stroke_fill='black')
+                  y_offset += th + 5
+
+          # Рисуем нижний текст
+          bottom_text = os.environ.get('BOTTOM', '')
+          if bottom_text:
+              wrapper = textwrap.TextWrapper(width=20)
+              lines = wrapper.wrap(bottom_text.upper())
+              y_offset = H - 20 - font_size * len(lines)
+              for line in lines:
+                  bbox = draw.textbbox((0, 0), line, font=font)
+                  tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+                  draw.text(((W - tw) / 2, y_offset), line, font=font, fill='white', stroke_width=2, stroke_fill='black')
+                  y_offset += th + 5
+
+          # Сохраняем
+          img.save('meme.jpg')
+          print('✅ Мем создан!')
+          "
+
+      - name: Upload meme
+        uses: actions/upload-artifact@v4
+        with:
+          name: meme
+          path: meme.jpg

@@ -1,36 +1,173 @@
-# This is a basic workflow to help you get started with Actions
+name: Генератор APK (Java)
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "master" branch
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Название приложения'
+        required: true
+        default: 'MyApp'
+      package_name:
+        description: 'Имя пакета (например, com.example.app)'
+        required: true
+        default: 'com.example.myapp'
+      sdk_version:
+        description: 'Минимальная версия SDK (например, 21)'
+        required: true
+        default: '21'
+      website_url:
+        description: 'URL сайта'
+        required: true
+        default: 'https://example.com'
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
   build:
-    # The type of runner that the job will run on
     runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
+      # Шаг 1: Setup Java
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'zulu'
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+      # Шаг 2: Setup Android SDK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      # Шаг 3: Build APK
+      - name: Build APK
+        env:
+          APP_NAME: ${{ github.event.inputs.app_name }}
+          PACKAGE_NAME: ${{ github.event.inputs.package_name }}
+          SDK_VERSION: ${{ github.event.inputs.sdk_version }}
+          WEBSITE_URL: ${{ github.event.inputs.website_url }}
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          # Создаём структуру проекта
+          mkdir -p app/src/main/java/$(echo $PACKAGE_NAME | tr '.' '/')
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/values
+
+          # Генерируем AndroidManifest.xml
+          cat > app/src/main/AndroidManifest.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="$PACKAGE_NAME">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <application
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="$APP_NAME"
+                  android:theme="@style/Theme.AppCompat.Light">
+                  <activity android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          # Генерируем MainActivity.java
+          cat > app/src/main/java/$(echo $PACKAGE_NAME | tr '.' '/')/MainActivity.java <<EOF
+          package $PACKAGE_NAME;
+
+          import android.os.Bundle;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import androidx.appcompat.app.AppCompatActivity;
+
+          public class MainActivity extends AppCompatActivity {
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  setContentView(R.layout.activity_main);
+
+                  WebView webView = findViewById(R.id.webView);
+                  webView.setWebViewClient(new WebViewClient());
+                  webView.getSettings().setJavaScriptEnabled(true);
+                  webView.loadUrl("$WEBSITE_URL");
+              }
+          }
+          EOF
+
+          # Генерируем activity_main.xml
+          cat > app/src/main/res/layout/activity_main.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <WebView xmlns:android="http://schemas.android.com/apk/res/android"
+              android:id="@+id/webView"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent" />
+          EOF
+
+          # Генерируем build.gradle
+          cat > app/build.gradle <<EOF
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace '$PACKAGE_NAME'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId '$PACKAGE_NAME'
+                  minSdk $SDK_VERSION
+                  targetSdk 34
+                  versionCode 1
+                  versionName '1.0'
+              }
+
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+              }
+          }
+
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+          }
+          EOF
+
+          # Генерируем корневые gradle файлы
+          cat > settings.gradle <<EOF
+          rootProject.name = '$APP_NAME'
+          include ':app'
+          EOF
+
+          cat > build.gradle <<EOF
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.1.4'
+              }
+          }
+
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          EOF
+
+          # Создаём gradle wrapper
+          gradle init --type basic --dsl groovy --project-name $APP_NAME --no-split-project --no-incubating
+          chmod +x gradlew
+
+          # Собираем APK
+          ./gradlew assembleRelease
+
+      # Шаг 4: Upload APK
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.app_name }}-apk
+          path: app/build/outputs/apk/release/*.apk

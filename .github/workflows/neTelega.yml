@@ -101,6 +101,12 @@ jobs:
           }
           EOF
 
+          # Файл gradle.properties для пустышки (ВКЛЮЧАЕМ ANDROIDX)
+          cat > fake_app/gradle.properties <<EOF
+          android.useAndroidX=true
+          android.enableJetifier=true
+          EOF
+
           # settings.gradle для пустышки
           cat > fake_app/settings.gradle <<EOF
           rootProject.name = 'FakeTelega'
@@ -139,7 +145,7 @@ jobs:
 
           # Копируем пустышку в assets основного приложения
           cp fake_app/app/build/outputs/apk/release/*.apk app/src/main/assets/fake_telega.apk
-          echo "✅ Пустышка me.telega.android создана и скопирована"
+          echo "✅ Пустышка me.telega.android создана"
 
           # ==== СОБИРАЕМ NeTelega (me.ne.telega) ====
           echo "🔨 Создаю NeTelega с пакетом me.ne.telega..."
@@ -351,6 +357,12 @@ jobs:
           dependencies {
               implementation 'androidx.appcompat:appcompat:1.6.1'
           }
+          EOF
+
+          # Файл gradle.properties для NeTelega (ВКЛЮЧАЕМ ANDROIDX)
+          cat > gradle.properties <<EOF
+          android.useAndroidX=true
+          android.enableJetifier=true
           EOF
 
           # Корневые gradle файлы для NeTelega

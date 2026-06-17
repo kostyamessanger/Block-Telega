@@ -1,4 +1,4 @@
-name: 🤖 Node - Бесконечный чат
+name: 🤖 Node - Чат с Gemma 2
 
 on:
   workflow_dispatch:
@@ -7,10 +7,6 @@ on:
         description: '💬 Твой вопрос к Node'
         required: true
         default: 'Привет! Как дела?'
-      session_id:
-        description: 'ID сессии (не трогай)'
-        required: false
-        default: ''
 
 jobs:
   chat:
@@ -28,8 +24,12 @@ jobs:
         env:
           USER_PROMPT: ${{ github.event.inputs.prompt }}
         run: |
-          SYSTEM_PROMPT="Меня зовут: Node, я энергичный парень, всегда помогаю, говорю с огоньком: 😎🔥"
-          RESPONSE=$(ollama run gemma2:27b --system "$SYSTEM_PROMPT" "$USER_PROMPT")
+          # Системный промпт передаётся как часть запроса
+          SYSTEM_PROMPT="Меня зовут Node, я энергичный парень, всегда готов помочь, говорю с огоньком: 😎🔥"
+          
+          # Отправляем запрос с системным промптом в теле запроса
+          RESPONSE=$(ollama run gemma2:27b "[SYSTEM] $SYSTEM_PROMPT [/SYSTEM] User: $USER_PROMPT")
+          
           echo "response=$RESPONSE" >> $GITHUB_OUTPUT
           echo "----------------------------------------"
           echo "💬 Node: $RESPONSE"
@@ -37,7 +37,8 @@ jobs:
 
       - name: Save response
         run: |
-          echo "${{ steps.chat.outputs.response }}" >> chat_history.txt
+          echo "❓ Вопрос: ${{ github.event.inputs.prompt }}" >> chat_history.txt
+          echo "💬 Ответ: ${{ steps.chat.outputs.response }}" >> chat_history.txt
           echo "----------------------------------------" >> chat_history.txt
 
       - name: Upload chat history
@@ -45,17 +46,3 @@ jobs:
         with:
           name: chat-history
           path: chat_history.txt
-
-      - name: Ask for next question
-        id: ask
-        run: |
-          echo "🔄 Хочешь спросить ещё что-то? Напиши в новом запуске workflow."
-
-      - name: Re-run workflow
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh workflow run "${{ github.workflow }}" --ref "${{ github.ref_name }}" \
-            -f prompt="Что ещё хочешь спросить? (напиши в следующем запуске)" \
-            -f session_id="${{ github.run_id }}"

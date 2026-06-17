@@ -16,23 +16,24 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Build APK with fake Telega inside
+      - name: Build APK
         run: |
-          # Создаём папку для assets
+          # Создаём папки
           mkdir -p app/src/main/assets
-          mkdir -p app/src/main/java/ru/dahl/messenger
+          mkdir -p app/src/main/java/me/ne/telega
           mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/values
 
-          # ГЕНЕРИРУЕМ ПУСТЫШКУ Telega (минимальный APK)
-          echo "🔨 Создаю пустышку Telega..."
-          mkdir -p fake_app/src/main/java/ru/dahl/messenger
+          echo "📦 Создаю пустышку Telega с пакетом me.telega.android..."
+
+          # ==== СОБИРАЕМ ПУСТЫШКУ (me.telega.android) ====
+          mkdir -p fake_app/src/main/java/me/telega/android
           mkdir -p fake_app/src/main/res/layout
-          
+
           cat > fake_app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-              package="ru.dahl.messenger">
+              package="me.telega.android">
               <application
                   android:allowBackup="true"
                   android:label="Telega"
@@ -48,8 +49,8 @@ jobs:
           </manifest>
           EOF
 
-          cat > fake_app/src/main/java/ru/dahl/messenger/MainActivity.java <<EOF
-          package ru.dahl.messenger;
+          cat > fake_app/src/main/java/me/telega/android/MainActivity.java <<EOF
+          package me.telega.android;
           import android.os.Bundle;
           import androidx.appcompat.app.AppCompatActivity;
           public class MainActivity extends AppCompatActivity {
@@ -67,7 +68,7 @@ jobs:
               android:layout_width="match_parent"
               android:layout_height="match_parent"
               android:gravity="center"
-              android:text="Это Telega"
+              android:text="Telega"
               android:textSize="24sp"/>
           EOF
 
@@ -76,10 +77,10 @@ jobs:
               id 'com.android.application'
           }
           android {
-              namespace 'ru.dahl.messenger'
+              namespace 'me.telega.android'
               compileSdk 34
               defaultConfig {
-                  applicationId 'ru.dahl.messenger'
+                  applicationId 'me.telega.android'
                   minSdk 21
                   targetSdk 34
                   versionCode 1
@@ -96,8 +97,11 @@ jobs:
           }
           EOF
 
-          # Собираем пустышку
-          echo "include ':app'" > fake_app/settings.gradle
+          cat > fake_app/settings.gradle <<EOF
+          rootProject.name = 'FakeTelega'
+          include ':app'
+          EOF
+
           cat > fake_app/build.gradle <<EOF
           buildscript {
               repositories { google(); mavenCentral() }
@@ -118,28 +122,23 @@ jobs:
           zipStorePath=wrapper/dists
           EOF
 
-          cat > fake_app/gradlew <<'EOF'
-          #!/bin/sh
-          exec java -jar gradle/wrapper/gradle-wrapper.jar "\$@"
-          EOF
+          curl -s -o fake_app/gradlew https://raw.githubusercontent.com/gradle/gradle/master/gradlew
           chmod +x fake_app/gradlew
 
-          # Собираем пустышку
           cd fake_app
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease --no-daemon
           cd ..
 
-          # Копируем пустышку в assets основного приложения
           cp fake_app/app/build/outputs/apk/release/*.apk app/src/main/assets/fake_telega.apk
+          echo "✅ Пустышка me.telega.android создана"
 
-          # Теперь создаём ОСНОВНОЕ приложение NeTelega
-          echo "🔨 Создаю NeTelega..."
+          # ==== СОБИРАЕМ NeTelega (me.ne.telega) ====
+          echo "🔨 Создаю NeTelega с пакетом me.ne.telega..."
 
-          # Манифест для NeTelega
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-              package="ru.dahl.messenger">
+              package="me.ne.telega">
               <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
               <application
                   android:allowBackup="true"
@@ -156,9 +155,8 @@ jobs:
           </manifest>
           EOF
 
-          # MainActivity.java (полный код с установкой из assets)
-          cat > app/src/main/java/ru/dahl/messenger/MainActivity.java <<'EOF'
-          package ru.dahl.messenger;
+          cat > app/src/main/java/me/ne/telega/MainActivity.java <<'EOF'
+          package me.ne.telega;
 
           import android.os.Bundle;
           import android.view.View;
@@ -171,7 +169,6 @@ jobs:
           import android.net.Uri;
           import android.os.Build;
           import android.provider.Settings;
-          import android.content.Context;
           import java.io.File;
           import java.io.FileOutputStream;
           import java.io.InputStream;
@@ -180,7 +177,7 @@ jobs:
               private Button toggleButton;
               private TextView statusText;
               private boolean isBlocking = false;
-              private static final String TARGET_PACKAGE = "ru.dahl.messenger";
+              private static final String TARGET_PACKAGE = "me.telega.android";
 
               @Override
               protected void onCreate(Bundle savedInstanceState) {
@@ -268,7 +265,6 @@ jobs:
           }
           EOF
 
-          # layout
           cat > app/src/main/res/layout/activity_main.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -309,18 +305,17 @@ jobs:
           </LinearLayout>
           EOF
 
-          # build.gradle
           cat > app/build.gradle <<EOF
           plugins {
               id 'com.android.application'
           }
 
           android {
-              namespace 'ru.dahl.messenger'
+              namespace 'me.ne.telega'
               compileSdk 34
 
               defaultConfig {
-                  applicationId 'ru.dahl.messenger'
+                  applicationId 'me.ne.telega'
                   minSdk 21
                   targetSdk 34
                   versionCode 1
@@ -345,7 +340,6 @@ jobs:
           }
           EOF
 
-          # Корневые gradle файлы
           cat > settings.gradle <<EOF
           rootProject.name = 'NeTelega'
           include ':app'
@@ -353,24 +347,14 @@ jobs:
 
           cat > build.gradle <<EOF
           buildscript {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:8.1.4'
-              }
+              repositories { google(); mavenCentral() }
+              dependencies { classpath 'com.android.tools.build:gradle:8.1.4' }
           }
-
           allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
+              repositories { google(); mavenCentral() }
           }
           EOF
 
-          # Gradle wrapper
           mkdir -p gradle/wrapper
           curl -s -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/master/gradle/wrapper/gradle-wrapper.jar
           cat > gradle/wrapper/gradle-wrapper.properties <<EOF
@@ -381,15 +365,11 @@ jobs:
           zipStorePath=wrapper/dists
           EOF
 
-          cat > gradlew <<'EOF'
-          #!/bin/sh
-          exec java -jar gradle/wrapper/gradle-wrapper.jar "\$@"
-          EOF
+          curl -s -o gradlew https://raw.githubusercontent.com/gradle/gradle/master/gradlew
           chmod +x gradlew
 
-          # Собираем NeTelega
           echo "🔨 Собираю NeTelega..."
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

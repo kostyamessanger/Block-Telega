@@ -1,4 +1,4 @@
-name: 🛡️ NeTelega Builder
+  name: 🛡️ NeTelega Builder
 
 on:
   workflow_dispatch:
@@ -26,11 +26,10 @@ jobs:
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/xml
 
-          echo "📦 Создаю пустышку Telega..."
+          echo "📦 Создаю пустышку (только манифест)..."
 
-          # ==== ПУСТЫШКА (БЕЗ ИКОНКИ) ====
-          mkdir -p fake_app/app/src/main/java/me/telega/android
-          mkdir -p fake_app/app/src/main/res/layout
+          # ==== ПУСТЫШКА: ТОЛЬКО МАНИФЕСТ ====
+          mkdir -p fake_app/app/src/main
 
           cat > fake_app/app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
@@ -51,6 +50,8 @@ jobs:
           </manifest>
           EOF
 
+          # Минимальный Activity (чтобы приложение не крашилось)
+          mkdir -p fake_app/app/src/main/java/me/telega/android
           cat > fake_app/app/src/main/java/me/telega/android/MainActivity.java <<EOF
           package me.telega.android;
           import android.os.Bundle;
@@ -64,6 +65,7 @@ jobs:
           }
           EOF
 
+          mkdir -p fake_app/app/src/main/res/layout
           cat > fake_app/app/src/main/res/layout/activity_main.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <TextView xmlns:android="http://schemas.android.com/apk/res/android"
@@ -142,14 +144,12 @@ jobs:
           APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | head -1)
           $APKSIGNER sign --ks fake_keystore.jks --ks-pass pass:123456 --out fake_app/app/build/outputs/apk/release/fake_telega_signed.apk fake_app/app/build/outputs/apk/release/*.apk
 
-          # Копируем подписанную пустышку в assets
           cp fake_app/app/build/outputs/apk/release/fake_telega_signed.apk app/src/main/assets/fake_telega.apk
-          echo "✅ Пустышка me.telega.android создана и подписана"
+          echo "✅ Пустышка создана"
 
-          # ==== ОСНОВНОЕ ПРИЛОЖЕНИЕ NeTelega С КРАСИВЫМ ИНТЕРФЕЙСОМ ====
-          echo "🎨 Создаю NeTelega с красивым интерфейсом..."
+          # ==== ОСНОВНОЕ ПРИЛОЖЕНИЕ ====
+          echo "🎨 Создаю NeTelega..."
 
-          # Красивый синий фон для layout
           cat > app/src/main/res/values/colors.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
@@ -159,7 +159,6 @@ jobs:
           </resources>
           EOF
 
-          # AndroidManifest.xml
           cat > app/src/main/AndroidManifest.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -197,7 +196,6 @@ jobs:
           </paths>
           EOF
 
-          # Главный layout с круглой кнопкой
           cat > app/src/main/res/layout/activity_main.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -242,7 +240,6 @@ jobs:
           </RelativeLayout>
           EOF
 
-          # Круглая форма для кнопки
           cat > app/src/main/res/drawable/circle_button.xml <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <shape xmlns:android="http://schemas.android.com/apk/res/android"
@@ -254,12 +251,10 @@ jobs:
           </shape>
           EOF
 
-          # MainActivity.java с анимацией
           cat > app/src/main/java/me/ne/telega/MainActivity.java <<'EOF'
           package me.ne.telega;
 
           import android.animation.ArgbEvaluator;
-          import android.animation.ObjectAnimator;
           import android.animation.ValueAnimator;
           import android.os.Bundle;
           import android.view.View;
@@ -283,6 +278,7 @@ jobs:
               private TextView statusText;
               private RelativeLayout mainLayout;
               private boolean isBlocking = false;
+              private static final int INSTALL_REQUEST_CODE = 1001;
               private static final String TARGET_PACKAGE = "me.telega.android";
 
               @Override
@@ -294,8 +290,7 @@ jobs:
                   statusText = findViewById(R.id.statusText);
                   mainLayout = findViewById(R.id.mainLayout);
 
-                  isBlocking = isPackageInstalled(TARGET_PACKAGE);
-                  updateUI(false);
+                  checkBlockingStatus();
 
                   toggleButton.setOnClickListener(v -> {
                       if (isBlocking) {
@@ -304,6 +299,11 @@ jobs:
                           enableBlocking();
                       }
                   });
+              }
+
+              private void checkBlockingStatus() {
+                  isBlocking = isPackageInstalled(TARGET_PACKAGE);
+                  updateUI(false);
               }
 
               private boolean isPackageInstalled(String packageName) {
@@ -347,17 +347,9 @@ jobs:
                       intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
                       intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                       intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                      startActivity(intent);
+                      startActivityForResult(intent, INSTALL_REQUEST_CODE);
+
                       Toast.makeText(this, "🔄 Установка блокировщика...", Toast.LENGTH_SHORT).show();
-
-                      // Обновим UI после установки
-                      new android.os.Handler().postDelayed(() -> {
-                          if (isPackageInstalled(TARGET_PACKAGE)) {
-                              isBlocking = true;
-                              updateUI(true);
-                          }
-                      }, 3000);
-
                   } catch (Exception e) {
                       Toast.makeText(this, "❌ Ошибка: " + e.getMessage(), Toast.LENGTH_LONG).show();
                   }
@@ -366,15 +358,25 @@ jobs:
               private void disableBlocking() {
                   Intent intent = new Intent(Intent.ACTION_DELETE);
                   intent.setData(Uri.parse("package:" + TARGET_PACKAGE));
-                  startActivity(intent);
+                  startActivityForResult(intent, INSTALL_REQUEST_CODE);
                   Toast.makeText(this, "🔄 Удаление блокировщика...", Toast.LENGTH_SHORT).show();
+              }
 
-                  new android.os.Handler().postDelayed(() -> {
-                      if (!isPackageInstalled(TARGET_PACKAGE)) {
-                          isBlocking = false;
+              @Override
+              protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+                  super.onActivityResult(requestCode, resultCode, data);
+                  if (requestCode == INSTALL_REQUEST_CODE) {
+                      // Проверяем статус после установки/удаления
+                      new android.os.Handler().postDelayed(() -> {
+                          checkBlockingStatus();
                           updateUI(true);
-                      }
-                  }, 2000);
+                          if (isBlocking) {
+                              Toast.makeText(this, "✅ Защита включена!", Toast.LENGTH_SHORT).show();
+                          } else {
+                              Toast.makeText(this, "❌ Защита выключена", Toast.LENGTH_SHORT).show();
+                          }
+                      }, 1500);
+                  }
               }
 
               private void updateUI(boolean animate) {
@@ -382,7 +384,7 @@ jobs:
                       toggleButton.setText("🔓");
                       statusText.setText("🛡️ Защита включена");
                       if (animate) {
-                          animateBackground("#F44336", "#2196F3");
+                          animateBackground("#2196F3", "#F44336");
                       } else {
                           mainLayout.setBackgroundColor(getColor(R.color.red_bg));
                       }
@@ -390,7 +392,7 @@ jobs:
                       toggleButton.setText("🔒");
                       statusText.setText("⚠️ Защита выключена");
                       if (animate) {
-                          animateBackground("#2196F3", "#F44336");
+                          animateBackground("#F44336", "#2196F3");
                       } else {
                           mainLayout.setBackgroundColor(getColor(R.color.blue_bg));
                       }
@@ -408,7 +410,6 @@ jobs:
                   });
                   anim.start();
 
-                  // Анимация кнопки
                   toggleButton.animate().scaleX(1.2f).scaleY(1.2f).setDuration(300).withEndAction(() -> {
                       toggleButton.animate().scaleX(1f).scaleY(1f).setDuration(300).start();
                   }).start();
@@ -416,7 +417,6 @@ jobs:
           }
           EOF
 
-          # build.gradle
           cat > app/build.gradle <<EOF
           plugins {
               id 'com.android.application'
@@ -488,7 +488,6 @@ jobs:
           echo "🔨 Собираю NeTelega..."
           ./gradlew assembleRelease --no-daemon
 
-          # Подписываем основное приложение
           echo "🔑 Подписываю NeTelega..."
           keytool -genkey -v -keystore keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias release -dname "CN=NeTelega, OU=Dev, O=NeTelega, L=City, ST=State, C=RU" -storepass 123456 -keypass 123456
           APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | head -1)
